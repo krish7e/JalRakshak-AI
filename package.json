@@ -8,6 +8,7 @@
     "dev": "node --watch server.js",
     "backend:python": "python backend/app.py",
     "seed": "python backend/seed_data.py",
+    "seed:mysql": "python backend/seed_mysql_bulk.py",
     "check": "python backend/connect_check.py",
     "test:python": "python backend/test_api.py"
   },
