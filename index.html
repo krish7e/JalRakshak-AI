@@ -199,6 +199,9 @@
   .risk-chip.elevated { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.25); }
   .risk-chip.high { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.25); }
   .risk-chip.critical { background: rgba(239, 68, 68, 0.25); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); }
+  .app-modal { position: fixed; inset: 0; z-index: 9999; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(12px); display: none; align-items: center; justify-content: center; padding: 20px; }
+  .app-modal.active { display: flex; animation: fadeIn 0.25s ease; }
+  .app-modal-content { background: rgba(10, 35, 23, 0.95); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 18px; max-width: 580px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); }
   .search-suggestions {
     position: absolute; top: 100%; left: 0; right: 0;
     background: rgba(10, 35, 23, 0.95); backdrop-filter: blur(12px);
@@ -434,6 +437,11 @@
         </nav>
       </div>
       <div class="flex items-center gap-2 md:gap-3">
+        <!-- Live Database Indicator -->
+        <button id="dbStatusBtn" onclick="openDbModal()" title="View database connection details" class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold glass-card border border-emerald-500/30 hover:border-emerald-400 transition cursor-pointer">
+          <span class="w-2 h-2 rounded-full bg-amber-400 pulse-dot" id="dbStatusDot"></span>
+          <span id="dbStatusLabel" class="text-emerald-300">Database: Checking...</span>
+        </button>
         <div class="dropdown-btn flex items-center gap-2 px-2 md:px-3 py-2 text-sm">
           <i class="fa-solid fa-location-dot text-emerald-400"></i>
           <select id="regionSelect" class="bg-transparent outline-none cursor-pointer text-white" onchange="onRegionChange()">
@@ -700,28 +708,28 @@
         <div class="flex flex-col lg:flex-row lg:items-center justify-between mb-6 gap-4">
           <div><h2 class="text-3xl font-bold text-white tracking-tight">Farm Registry</h2><p class="text-sm text-emerald-400/70 mt-1">Registered growers, agricultural plots, and verified pump information.</p></div>
           <div class="flex items-center gap-3">
-            <span class="demo-badge flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span> Demonstration data</span>
-            <button onclick="showToast('Register farm dialog opened', 'info')" class="btn-primary px-4 py-2.5 text-sm font-semibold flex items-center gap-2"><i class="fa-solid fa-plus"></i> Register farm</button>
+            <span class="demo-badge flex items-center gap-1.5" id="regSourceBadge"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span> Live Database</span>
+            <button onclick="openRegisterFarmModal()" class="btn-primary px-4 py-2.5 text-sm font-semibold flex items-center gap-2"><i class="fa-solid fa-plus"></i> Register farm</button>
           </div>
         </div>
         <div class="glass-card p-4 mb-4">
           <div class="flex flex-wrap gap-3 items-center">
             <div class="flex items-center gap-2 text-sm text-emerald-400/70"><i class="fa-solid fa-filter"></i> Filters</div>
-            <select class="dark-select text-sm"><option>All districts</option><option>Karnal</option><option>Patiala</option><option>Ludhiana</option></select>
-            <select class="dark-select text-sm"><option>All crops</option><option>Paddy</option><option>Wheat</option><option>Maize</option></select>
-            <select class="dark-select text-sm"><option>All risk levels</option><option>Normal</option><option>Elevated</option><option>High</option></select>
+            <select id="regFilterDistrict" onchange="filterRegistryTable()" class="dark-select text-sm"><option value="all">All districts</option></select>
+            <select id="regFilterCrop" onchange="filterRegistryTable()" class="dark-select text-sm"><option value="all">All crops</option><option value="Paddy">Paddy</option><option value="Wheat">Wheat</option><option value="Maize">Maize</option><option value="Cotton">Cotton</option><option value="Sugarcane">Sugarcane</option></select>
+            <select id="regFilterRisk" onchange="filterRegistryTable()" class="dark-select text-sm"><option value="all">All risk levels</option><option value="Normal">Normal</option><option value="Elevated">Elevated</option><option value="High">High</option><option value="Critical">Critical</option></select>
             <span class="ai-badge text-xs"><i class="fa-solid fa-seedling"></i> Kharif 2026</span>
-            <button class="ml-auto text-sm text-emerald-400 hover:text-emerald-300 transition flex items-center gap-1"><i class="fa-solid fa-rotate-right"></i> Reset filters</button>
+            <button onclick="resetRegistryFilters()" class="ml-auto text-sm text-emerald-400 hover:text-emerald-300 transition flex items-center gap-1"><i class="fa-solid fa-rotate-right"></i> Reset filters</button>
           </div>
         </div>
         <div class="glass-card p-4 mb-4 flex flex-wrap gap-3 items-center justify-between">
           <div class="relative flex-1 max-w-md">
             <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-emerald-400/40 text-sm"></i>
-            <input type="text" placeholder="Search farmer, village or farm ID..." class="dark-input w-full pl-9 pr-3 py-2.5 text-sm">
+            <input type="text" id="regSearchInput" oninput="filterRegistryTable()" placeholder="Search farmer, village or farm ID..." class="dark-input w-full pl-9 pr-3 py-2.5 text-sm">
           </div>
           <div class="flex items-center gap-2">
-            <select class="dark-select text-sm"><option>Sort: Name</option><option>Sort: Risk level</option><option>Sort: Extraction</option></select>
-            <button class="btn-ghost px-4 py-2.5 text-sm flex items-center gap-2"><i class="fa-solid fa-download"></i> Export report</button>
+            <select id="regSortSelect" onchange="filterRegistryTable()" class="dark-select text-sm"><option value="name">Sort: Name</option><option value="risk">Sort: Risk level</option><option value="extraction">Sort: Extraction</option></select>
+            <button onclick="exportRegistryCSV()" class="btn-ghost px-4 py-2.5 text-sm flex items-center gap-2"><i class="fa-solid fa-download"></i> Export report</button>
           </div>
         </div>
         <div class="glass-card overflow-hidden">
@@ -739,7 +747,7 @@
                   <th class="px-4 py-3.5 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-emerald-900/20">
+              <tbody class="divide-y divide-emerald-900/20" id="registryTableBody">
                 <tr class="registry-table-row">
                   <td class="px-4 py-4"><p class="font-semibold text-white text-sm">Raman Singh</p><p class="text-[10px] text-emerald-400/60 font-mono mt-0.5">DEMO-009</p></td>
                   <td class="px-4 py-4"><p class="text-white text-sm">Dhanauri</p><p class="text-[10px] text-emerald-400/60">Karnal, Haryana</p></td>
@@ -1264,22 +1272,22 @@
           <div class="glass-card p-6">
             <h3 class="font-semibold text-white mb-4">Water Budget Thresholds</h3>
             <div class="space-y-4">
-              <div><label class="text-xs font-medium text-emerald-300/80">Normal (green)</label><input type="number" value="80" class="dark-input w-full mt-1.5"><p class="text-[10px] text-emerald-400/50 mt-1">% of budget — below this is normal</p></div>
-              <div><label class="text-xs font-medium text-emerald-300/80">Watch (amber)</label><input type="number" value="100" class="dark-input w-full mt-1.5"></div>
-              <div><label class="text-xs font-medium text-emerald-300/80">High (red)</label><input type="number" value="120" class="dark-input w-full mt-1.5"></div>
-              <div><label class="text-xs font-medium text-emerald-300/80">Critical (dark red)</label><input type="number" value="150" class="dark-input w-full mt-1.5"></div>
+              <div><label class="text-xs font-medium text-emerald-300/80">Normal (green)</label><input type="number" id="setting-normal" value="80" class="dark-input w-full mt-1.5"><p class="text-[10px] text-emerald-400/50 mt-1">% of budget — below this is normal</p></div>
+              <div><label class="text-xs font-medium text-emerald-300/80">Watch (amber)</label><input type="number" id="setting-watch" value="100" class="dark-input w-full mt-1.5"></div>
+              <div><label class="text-xs font-medium text-emerald-300/80">High (red)</label><input type="number" id="setting-high" value="120" class="dark-input w-full mt-1.5"></div>
+              <div><label class="text-xs font-medium text-emerald-300/80">Critical (dark red)</label><input type="number" id="setting-critical" value="150" class="dark-input w-full mt-1.5"></div>
             </div>
-            <button class="btn-primary mt-5 px-4 py-2.5 text-sm font-semibold">Save Thresholds</button>
+            <button onclick="savePlatformSettings()" class="btn-primary mt-5 px-4 py-2.5 text-sm font-semibold flex items-center gap-2"><i class="fa-solid fa-floppy-disk"></i> Save Thresholds to Database</button>
           </div>
           <div class="glass-card p-6">
             <h3 class="font-semibold text-white mb-4">Notifications & Language</h3>
             <div class="space-y-3">
-              <label class="flex items-center justify-between p-3 metric-box cursor-pointer"><span class="text-sm text-emerald-200">Email alerts for high-risk farms</span><input type="checkbox" checked class="accent-emerald-500 w-4 h-4"></label>
-              <label class="flex items-center justify-between p-3 metric-box cursor-pointer"><span class="text-sm text-emerald-200">SMS notifications to farmers</span><input type="checkbox" checked class="accent-emerald-500 w-4 h-4"></label>
-              <label class="flex items-center justify-between p-3 metric-box cursor-pointer"><span class="text-sm text-emerald-200">Weekly summary reports</span><input type="checkbox" checked class="accent-emerald-500 w-4 h-4"></label>
+              <label class="flex items-center justify-between p-3 metric-box cursor-pointer"><span class="text-sm text-emerald-200">Email alerts for high-risk farms</span><input type="checkbox" id="setting-email" checked class="accent-emerald-500 w-4 h-4"></label>
+              <label class="flex items-center justify-between p-3 metric-box cursor-pointer"><span class="text-sm text-emerald-200">SMS notifications to farmers</span><input type="checkbox" id="setting-sms" checked class="accent-emerald-500 w-4 h-4"></label>
+              <label class="flex items-center justify-between p-3 metric-box cursor-pointer"><span class="text-sm text-emerald-200">Weekly summary reports</span><input type="checkbox" id="setting-weekly" checked class="accent-emerald-500 w-4 h-4"></label>
               <div class="p-3 metric-box">
                 <p class="text-sm font-medium text-emerald-200 mb-2">Interface Language</p>
-                <select class="dark-select w-full"><option>English</option><option>हिन्दी (Hindi)</option><option>ਪੰਜਾਬੀ (Punjabi)</option></select>
+                <select id="setting-lang" class="dark-select w-full"><option value="English">English</option><option value="Hindi">हिन्दी (Hindi)</option><option value="Punjabi">ਪੰਜਾਬੀ (Punjabi)</option></select>
               </div>
             </div>
           </div>
@@ -1294,6 +1302,151 @@
 <div id="fullscreenMapModal" class="fullscreen-map-modal">
   <button class="fullscreen-close-btn" onclick="closeFullscreenMap()"><i class="fa-solid fa-xmark"></i></button>
   <div class="map-fullscreen-container"><div id="map-fullscreen" style="height: 100%; width: 100%;"></div></div>
+</div>
+
+<!-- Database Connection & Diagnostics Modal -->
+<div id="dbStatusModal" class="app-modal">
+  <div class="app-modal-content">
+    <div class="flex items-center justify-between pb-4 border-b border-emerald-900/40 mb-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-lg">
+          <i class="fa-solid fa-database"></i>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-white">Database & Backend Engine</h3>
+          <p class="text-xs text-emerald-400/70" id="dbModalSubtitle">Active data layer status</p>
+        </div>
+      </div>
+      <button onclick="closeDbModal()" class="action-btn text-emerald-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+    </div>
+
+    <div class="space-y-4">
+      <div class="metric-box flex items-center justify-between p-3.5">
+        <div>
+          <span class="text-xs text-emerald-400/60 block">Connection State</span>
+          <span class="text-sm font-bold text-white flex items-center gap-2 mt-0.5" id="dbModalState">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span> Checking connection...
+          </span>
+        </div>
+        <div class="text-right">
+          <span class="text-xs text-emerald-400/60 block">Engine / Storage</span>
+          <span class="text-xs font-mono text-emerald-300 font-semibold" id="dbModalEngine">SQLite (Embedded)</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <div class="metric-box p-3">
+          <p class="text-[11px] text-emerald-400/70">Districts Loaded</p>
+          <p class="text-xl font-bold text-white mt-1" id="dbModalDistricts">45</p>
+          <p class="text-[10px] text-emerald-400/50">Punjab & Haryana</p>
+        </div>
+        <div class="metric-box p-3">
+          <p class="text-[11px] text-emerald-400/70">Weekly Readings</p>
+          <p class="text-xl font-bold text-white mt-1" id="dbModalReadings">1,845</p>
+          <p class="text-[10px] text-emerald-400/50">41 Weeks Time Series</p>
+        </div>
+        <div class="metric-box p-3">
+          <p class="text-[11px] text-emerald-400/70">Registered Plots</p>
+          <p class="text-xl font-bold text-white mt-1" id="dbModalPlots">24</p>
+          <p class="text-[10px] text-emerald-400/50">Growers & Farms</p>
+        </div>
+        <div class="metric-box p-3">
+          <p class="text-[11px] text-emerald-400/70">Smart Tubewells</p>
+          <p class="text-xl font-bold text-white mt-1" id="dbModalTubewells">12</p>
+          <p class="text-[10px] text-emerald-400/50">Remote Pumps Monitored</p>
+        </div>
+      </div>
+
+      <div class="p-3 rounded-xl bg-black/40 border border-emerald-900/30 text-xs text-emerald-300/80 space-y-2">
+        <p class="font-semibold text-emerald-200 flex items-center gap-2"><i class="fa-solid fa-terminal text-emerald-400"></i> How to run backend:</p>
+        <p><strong class="text-white">Option 1 (Node.js):</strong> <code class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 font-mono">npm start</code> or <code class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 font-mono">node server.js</code> (Port 3000)</p>
+        <p><strong class="text-white">Option 2 (Python FastAPI):</strong> <code class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 font-mono">python backend/app.py</code> (Port 8001)</p>
+      </div>
+
+      <div class="flex items-center gap-3 pt-2">
+        <button onclick="JalRakshakAPI.checkBackend(true)" class="btn-ghost flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-2">
+          <i class="fa-solid fa-rotate"></i> Ping / Re-check
+        </button>
+        <button onclick="syncDatabaseData()" class="btn-primary flex-1 py-2.5 text-xs font-semibold flex items-center justify-center gap-2">
+          <i class="fa-solid fa-arrows-rotate"></i> Re-seed / Sync DB
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Register Farm Modal -->
+<div id="registerFarmModal" class="app-modal">
+  <div class="app-modal-content">
+    <div class="flex items-center justify-between pb-4 border-b border-emerald-900/40 mb-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-lg">
+          <i class="fa-solid fa-tractor"></i>
+        </div>
+        <div>
+          <h3 class="text-lg font-bold text-white">Register Agricultural Plot</h3>
+          <p class="text-xs text-emerald-400/70">Save farmer & plot to database</p>
+        </div>
+      </div>
+      <button onclick="closeRegisterFarmModal()" class="action-btn text-emerald-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+    </div>
+
+    <form onsubmit="handleRegisterFarmSubmit(event)" class="space-y-4">
+      <div>
+        <label class="text-xs font-medium text-emerald-300/80">Farmer Full Name</label>
+        <input type="text" id="rf-owner" required placeholder="e.g. Gurmukh Singh" class="dark-input w-full mt-1.5">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs font-medium text-emerald-300/80">District</label>
+          <select id="rf-district" class="dark-select w-full mt-1.5" onchange="onRegisterDistrictChange()">
+          </select>
+        </div>
+        <div>
+          <label class="text-xs font-medium text-emerald-300/80">State</label>
+          <input type="text" id="rf-state" readonly value="Punjab" class="dark-input w-full mt-1.5 opacity-80 cursor-not-allowed">
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs font-medium text-emerald-300/80">Area (Acres)</label>
+          <input type="number" id="rf-acres" required step="0.1" min="0.5" max="100" value="5.0" class="dark-input w-full mt-1.5">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-emerald-300/80">Crop Type</label>
+          <select id="rf-crop" class="dark-select w-full mt-1.5">
+            <option value="Paddy">Paddy (Rice)</option>
+            <option value="Wheat">Wheat</option>
+            <option value="Maize">Maize</option>
+            <option value="Cotton">Cotton</option>
+            <option value="Sugarcane">Sugarcane</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs font-medium text-emerald-300/80">Growth Stage</label>
+          <select id="rf-stage" class="dark-select w-full mt-1.5">
+            <option value="Initial">Initial</option>
+            <option value="Development">Development</option>
+            <option value="Mid-season" selected>Mid-season</option>
+            <option value="Late">Late</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs font-medium text-emerald-300/80">Pump Discharge (m³/hr)</label>
+          <input type="number" id="rf-discharge" step="1" min="5" max="50" value="18" class="dark-input w-full mt-1.5">
+        </div>
+      </div>
+
+      <div class="pt-2 flex items-center justify-end gap-3">
+        <button type="button" onclick="closeRegisterFarmModal()" class="btn-ghost px-4 py-2 text-sm">Cancel</button>
+        <button type="submit" class="btn-primary px-5 py-2 text-sm font-semibold flex items-center gap-2">
+          <i class="fa-solid fa-floppy-disk"></i> Save to Database
+        </button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <div id="toastContainer"></div>
@@ -2159,8 +2312,11 @@ const PRIORITY_PER_PAGE = 12;
 function init() {
   GroundwaterDataService._generateWeeklyData();
   populateWeekDropdown();
+  populateRegisterDistrictDropdown();
   initMap();
   refreshDashboard();
+  renderRegistryTable();
+  JalRakshakAPI.init();
   window.addEventListener('resize', () => {
     if (map) map.invalidateSize();
     if (fullscreenMapInstance && document.getElementById('fullscreenMapModal').classList.contains('active')) fullscreenMapInstance.invalidateSize();
@@ -2551,12 +2707,450 @@ function recalcRuntime() { const cap = parseFloat(document.getElementById('pumpC
 function generatePlan() { showToast('Irrigation plan generated successfully', 'success'); }
 function showToast(msg, type = 'success') {
   const container = document.getElementById('toastContainer');
+  if (!container) return;
   const toast = document.createElement('div');
   const icons = { success: 'fa-check-circle text-emerald-400', error: 'fa-circle-xmark text-red-400', info: 'fa-info-circle text-blue-400' };
   toast.className = 'toast';
-  toast.innerHTML = `<i class="fa-solid ${icons[type]} mr-2"></i> ${msg}`;
+  toast.innerHTML = `<i class="fa-solid ${icons[type] || icons.info} mr-2"></i> ${msg}`;
   container.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
+  setTimeout(() => toast.remove(), 3500);
+}
+
+// =============================================================================
+// JALRAKSHAK API & LIVE DATABASE CONNECTOR
+// =============================================================================
+const JalRakshakAPI = {
+  baseUrl: '',
+  isLive: false,
+  dbInfo: null,
+  plots: [],
+
+  async init() {
+    await this.checkBackend();
+    if (this.isLive) {
+      await this.loadPlots();
+      await this.loadSettings();
+    } else {
+      // Fallback initial plots
+      this.plots = [
+        { id: 'DEMO-009', owner: 'Raman Singh', district: 'Karnal', state: 'haryana', acres: 5.5, crop: 'Paddy', stage: 'Mid-season', discharge: 18, extraction: 252, budget: 117, riskLevel: 'High' },
+        { id: 'DEMO-004', owner: 'Balbir Singh', district: 'Patiala', state: 'punjab', acres: 6.5, crop: 'Wheat', stage: 'Development', discharge: 20, extraction: 280, budget: 88, riskLevel: 'Elevated' },
+        { id: 'DEMO-001', owner: 'Gurpreet Singh', district: 'Ludhiana', state: 'punjab', acres: 5.0, crop: 'Paddy', stage: 'Mid-season', discharge: 22, extraction: 210, budget: 117, riskLevel: 'High' },
+        { id: 'DEMO-002', owner: 'Harpreet Kaur', district: 'Bathinda', state: 'punjab', acres: 8.0, crop: 'Paddy', stage: 'Mid-season', discharge: 25, extraction: 360, budget: 124, riskLevel: 'High' },
+        { id: 'DEMO-008', owner: 'Jaspreet Kaur', district: 'Moga', state: 'punjab', acres: 7.0, crop: 'Cotton', stage: 'Development', discharge: 16, extraction: 200, budget: 95, riskLevel: 'Elevated' },
+        { id: 'DEMO-006', owner: 'Manpreet Singh', district: 'Sangrur', state: 'punjab', acres: 10.0, crop: 'Paddy', stage: 'Mid-season', discharge: 28, extraction: 450, budget: 132, riskLevel: 'Critical' },
+        { id: 'DEMO-003', owner: 'Rajesh Kumar', district: 'Karnal', state: 'haryana', acres: 5.0, crop: 'Paddy', stage: 'Mid-season', discharge: 21, extraction: 210, budget: 117, riskLevel: 'High' },
+        { id: 'DEMO-005', owner: 'Sukhdev Ram', district: 'Karnal', state: 'haryana', acres: 4.5, crop: 'Maize', stage: 'Initial', discharge: 14, extraction: 140, budget: 78, riskLevel: 'Normal' }
+      ];
+      renderRegistryTable(this.plots);
+    }
+  },
+
+  async checkBackend(manual = false) {
+    const candidates = [
+      window.location.origin.includes('http') ? window.location.origin : '',
+      'http://localhost:8001',
+      'http://localhost:3000'
+    ];
+
+    let connected = false;
+    for (const base of candidates) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1200);
+        const res = await fetch(`${base}/api/health`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json();
+          this.baseUrl = base;
+          this.isLive = true;
+          this.dbInfo = data;
+          this.updateStatusBadge(true, data);
+          connected = true;
+          if (manual) showToast(`Connected to ${data.database.toUpperCase()} backend (${base || 'origin'})`, 'success');
+          break;
+        }
+      } catch (e) {}
+    }
+
+    if (!connected) {
+      this.isLive = false;
+      this.updateStatusBadge(false);
+      if (manual) showToast('Backend offline. Running in local simulation mode.', 'info');
+    }
+    return this.isLive;
+  },
+
+  updateStatusBadge(isLive, data = null) {
+    const dot = document.getElementById('dbStatusDot');
+    const label = document.getElementById('dbStatusLabel');
+    const modalState = document.getElementById('dbModalState');
+    const modalEngine = document.getElementById('dbModalEngine');
+    const modalSubtitle = document.getElementById('dbModalSubtitle');
+    const regBadge = document.getElementById('regSourceBadge');
+
+    if (isLive && data) {
+      const dbName = (data.database || data.backend || 'SQLITE').toUpperCase();
+      if (dot) { dot.className = 'w-2 h-2 rounded-full bg-emerald-400 pulse-dot'; }
+      if (label) { label.innerHTML = `Live DB: <span class="text-white font-bold">${dbName}</span>`; }
+      if (modalState) { modalState.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span> Online & Synchronized (${this.baseUrl || 'active origin'})`; }
+      if (modalEngine) { modalEngine.textContent = `${dbName} Database`; }
+      if (modalSubtitle) { modalSubtitle.textContent = `Connected to live API at ${this.baseUrl || window.location.origin}`; }
+      if (regBadge) { regBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot"></span> Live Database (${dbName})`; }
+      
+      if (data.districts) document.getElementById('dbModalDistricts').textContent = data.districts;
+      if (data.readings) document.getElementById('dbModalReadings').textContent = data.readings.toLocaleString();
+      if (data.plots) document.getElementById('dbModalPlots').textContent = data.plots;
+      if (data.tubewells) document.getElementById('dbModalTubewells').textContent = data.tubewells;
+    } else {
+      if (dot) { dot.className = 'w-2 h-2 rounded-full bg-amber-400'; }
+      if (label) { label.textContent = 'Local Mode (Simulated)'; }
+      if (modalState) { modalState.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400"></span> Backend Offline (In-Memory Fallback)`; }
+      if (modalEngine) { modalEngine.textContent = 'In-Memory Simulation'; }
+      if (modalSubtitle) { modalSubtitle.textContent = 'Start Node.js or Python backend to enable live persistence'; }
+      if (regBadge) { regBadge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span> Demonstration mode`; }
+    }
+  },
+
+  async loadPlots() {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/registry/plots`);
+      if (res.ok) {
+        const data = await res.json();
+        this.plots = data.plots.map(p => {
+          const depth = (GroundwaterDataService.districtMeta[p.district] || { baseDepth: 25 }).baseDepth;
+          const stress = GroundwaterDataService.getStressLevel(depth);
+          const est = Math.round(p.acres * 40 * (stress.level === 'high' ? 1.3 : 1.1));
+          const bud = Math.round((est / (p.acres * 35)) * 100);
+          return {
+            ...p,
+            extraction: est,
+            budget: bud,
+            riskLevel: p.riskLevel || (stress.level === 'high' ? 'High' : stress.level === 'elevated' ? 'Elevated' : 'Normal')
+          };
+        });
+        renderRegistryTable(this.plots);
+      }
+    } catch (e) {
+      console.warn('Failed to load plots from API:', e);
+    }
+  },
+
+  async createPlot(plotData) {
+    if (this.isLive) {
+      const res = await fetch(`${this.baseUrl}/api/registry/plots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(plotData)
+      });
+      if (res.ok) {
+        const json = await res.json();
+        await this.loadPlots();
+        return json.plot;
+      }
+    }
+    // Fallback local addition
+    const id = `DEMO-${String(this.plots.length + 1).padStart(3, '0')}`;
+    const newPlot = { ...plotData, id, extraction: Math.round(plotData.acres * 45), budget: 105 };
+    this.plots.unshift(newPlot);
+    renderRegistryTable(this.plots);
+    return newPlot;
+  },
+
+  async deletePlot(plotId) {
+    if (this.isLive) {
+      try {
+        await fetch(`${this.baseUrl}/api/registry/plots/${plotId}`, { method: 'DELETE' });
+        await this.loadPlots();
+        return true;
+      } catch (e) {}
+    }
+    this.plots = this.plots.filter(p => p.id !== plotId);
+    renderRegistryTable(this.plots);
+    return true;
+  },
+
+  async loadSettings() {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/settings`);
+      if (res.ok) {
+        const s = await res.json();
+        if (s.threshold_normal) document.getElementById('setting-normal').value = s.threshold_normal;
+        if (s.threshold_watch) document.getElementById('setting-watch').value = s.threshold_watch;
+        if (s.threshold_high) document.getElementById('setting-high').value = s.threshold_high;
+        if (s.threshold_critical) document.getElementById('setting-critical').value = s.threshold_critical;
+        if (s.alert_email !== undefined) document.getElementById('setting-email').checked = s.alert_email;
+        if (s.alert_sms !== undefined) document.getElementById('setting-sms').checked = s.alert_sms;
+        if (s.alert_weekly_reports !== undefined) document.getElementById('setting-weekly').checked = s.alert_weekly_reports;
+        if (s.language) document.getElementById('setting-lang').value = s.language;
+      }
+    } catch (e) {}
+  },
+
+  async saveSettings(settingsData) {
+    if (this.isLive) {
+      const res = await fetch(`${this.baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settingsData)
+      });
+      return res.ok;
+    }
+    return true;
+  },
+
+  async seedDatabase() {
+    if (!this.isLive) {
+      showToast('Cannot seed: Backend server is offline', 'error');
+      return;
+    }
+    try {
+      showToast('Synchronizing database...', 'info');
+      const res = await fetch(`${this.baseUrl}/api/database/seed`, { method: 'POST' });
+      if (res.ok) {
+        showToast('Database successfully seeded and synchronized!', 'success');
+        await this.checkBackend(false);
+        await this.loadPlots();
+      }
+    } catch (e) {
+      showToast('Seed request failed: ' + e.message, 'error');
+    }
+  }
+};
+
+// =============================================================================
+// UI MODAL & FORM HANDLERS
+// =============================================================================
+function openDbModal() {
+  document.getElementById('dbStatusModal').classList.add('active');
+  JalRakshakAPI.checkBackend(false);
+}
+function closeDbModal() {
+  document.getElementById('dbStatusModal').classList.remove('active');
+}
+function syncDatabaseData() {
+  JalRakshakAPI.seedDatabase();
+}
+
+function openRegisterFarmModal() {
+  populateRegisterDistrictDropdown();
+  document.getElementById('registerFarmModal').classList.add('active');
+}
+function closeRegisterFarmModal() {
+  document.getElementById('registerFarmModal').classList.remove('active');
+}
+
+function populateRegisterDistrictDropdown() {
+  const select = document.getElementById('rf-district');
+  const filterSelect = document.getElementById('regFilterDistrict');
+  if (!select) return;
+  
+  const districts = Object.keys(GroundwaterDataService.districtMeta).sort();
+  if (select.children.length === 0) {
+    districts.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = `${d} (${GroundwaterDataService.districtMeta[d].state === 'punjab' ? 'Punjab' : 'Haryana'})`;
+      select.appendChild(opt);
+    });
+  }
+  if (filterSelect && filterSelect.children.length <= 1) {
+    districts.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = d;
+      filterSelect.appendChild(opt);
+    });
+  }
+  onRegisterDistrictChange();
+}
+
+function onRegisterDistrictChange() {
+  const d = document.getElementById('rf-district').value;
+  const meta = GroundwaterDataService.districtMeta[d];
+  const stateInput = document.getElementById('rf-state');
+  if (meta && stateInput) {
+    stateInput.value = meta.state === 'punjab' ? 'Punjab' : 'Haryana';
+  }
+}
+
+async function handleRegisterFarmSubmit(e) {
+  e.preventDefault();
+  const owner = document.getElementById('rf-owner').value.trim();
+  const district = document.getElementById('rf-district').value;
+  const state = document.getElementById('rf-state').value.toLowerCase();
+  const acres = parseFloat(document.getElementById('rf-acres').value) || 5.0;
+  const crop = document.getElementById('rf-crop').value;
+  const stage = document.getElementById('rf-stage').value;
+  const discharge = parseFloat(document.getElementById('rf-discharge').value) || 18.0;
+
+  const meta = GroundwaterDataService.districtMeta[district] || { lat: 30.5, lng: 75.5, baseDepth: 25 };
+  const stress = GroundwaterDataService.getStressLevel(meta.baseDepth);
+
+  const plotData = {
+    owner,
+    district,
+    state,
+    acres,
+    crop,
+    stage,
+    discharge,
+    lat: meta.lat,
+    lng: meta.lng,
+    riskLevel: stress.level === 'high' ? 'High' : stress.level === 'elevated' ? 'Elevated' : 'Normal'
+  };
+
+  try {
+    const created = await JalRakshakAPI.createPlot(plotData);
+    closeRegisterFarmModal();
+    showToast(`Farm plot ${created.id || ''} for ${owner} registered successfully!`, 'success');
+    e.target.reset();
+  } catch (err) {
+    showToast('Failed to register farm: ' + err.message, 'error');
+  }
+}
+
+// =============================================================================
+// FARM REGISTRY TABLE RENDERING & FILTERING
+// =============================================================================
+function renderRegistryTable(plotsToRender = null) {
+  const tbody = document.getElementById('registryTableBody');
+  if (!tbody) return;
+  const list = plotsToRender || JalRakshakAPI.plots;
+  if (!list || list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-emerald-400/60 text-sm">No farm plots found matching the filter criteria.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map(p => {
+    const riskChipClass = p.riskLevel ? p.riskLevel.toLowerCase() : 'normal';
+    const riskChipDot = riskChipClass === 'critical' ? 'bg-red-500' : riskChipClass === 'high' ? 'bg-red-400' : riskChipClass === 'elevated' ? 'bg-amber-400' : 'bg-emerald-400';
+    const budgetPct = p.budget || 95;
+    const budgetColor = budgetPct >= 120 ? '#ef4444' : budgetPct >= 100 ? '#f59e0b' : '#10b981';
+    const ext = p.extraction || Math.round(p.acres * 45);
+
+    return `
+      <tr class="registry-table-row">
+        <td class="px-4 py-4"><p class="font-semibold text-white text-sm">${p.owner}</p><p class="text-[10px] text-emerald-400/60 font-mono mt-0.5">${p.id}</p></td>
+        <td class="px-4 py-4"><p class="text-white text-sm">${p.district}</p><p class="text-[10px] text-emerald-400/60">${p.state === 'punjab' ? 'Punjab' : 'Haryana'}</p></td>
+        <td class="px-4 py-4"><p class="text-white text-sm">${p.acres} acres</p><p class="text-[10px] text-emerald-400/60">${p.crop} · ${p.stage}</p></td>
+        <td class="px-4 py-4"><p class="text-white text-sm">Tubewell</p><p class="text-[10px] text-emerald-400/60">${p.discharge || 18} m³/hr</p></td>
+        <td class="px-4 py-4"><p class="text-white font-semibold text-sm">${ext} m³/day</p><p class="text-[10px] text-emerald-400/60">AI estimated</p></td>
+        <td class="px-4 py-4">
+          <div class="flex items-center gap-2">
+            <div class="budget-bar-track flex-1"><div class="budget-bar-fill" style="width:${Math.min(100, budgetPct)}%;background:${budgetColor};"></div></div>
+            <span class="text-xs font-semibold w-10 text-right" style="color:${budgetColor};">${budgetPct}%</span>
+          </div>
+        </td>
+        <td class="px-4 py-4">
+          <span class="risk-chip ${riskChipClass}"><span class="w-1.5 h-1.5 rounded-full ${riskChipDot}"></span> ${p.riskLevel || 'Normal'}</span>
+        </td>
+        <td class="px-4 py-4 text-right">
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="action-btn" title="View Details" onclick="showToast('Farmer: ${p.owner} (${p.id})', 'info')"><i class="fa-solid fa-eye"></i></button>
+            <button class="action-btn text-red-400 hover:text-red-300" title="Delete Plot" onclick="deleteFarmPlot('${p.id}')"><i class="fa-solid fa-trash"></i></button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function filterRegistryTable() {
+  const dFilter = document.getElementById('regFilterDistrict')?.value || 'all';
+  const cFilter = document.getElementById('regFilterCrop')?.value || 'all';
+  const rFilter = document.getElementById('regFilterRisk')?.value || 'all';
+  const query = (document.getElementById('regSearchInput')?.value || '').toLowerCase().trim();
+  const sort = document.getElementById('regSortSelect')?.value || 'name';
+
+  let filtered = JalRakshakAPI.plots.filter(p => {
+    if (dFilter !== 'all' && p.district !== dFilter) return false;
+    if (cFilter !== 'all' && p.crop !== cFilter) return false;
+    if (rFilter !== 'all' && p.riskLevel !== rFilter) return false;
+    if (query) {
+      const match = p.owner.toLowerCase().includes(query) ||
+                    p.id.toLowerCase().includes(query) ||
+                    p.district.toLowerCase().includes(query);
+      if (!match) return false;
+    }
+    return true;
+  });
+
+  if (sort === 'name') filtered.sort((a, b) => a.owner.localeCompare(b.owner));
+  else if (sort === 'risk') {
+    const order = { Critical: 4, High: 3, Elevated: 2, Normal: 1 };
+    filtered.sort((a, b) => (order[b.riskLevel] || 0) - (order[a.riskLevel] || 0));
+  } else if (sort === 'extraction') {
+    filtered.sort((a, b) => (b.extraction || 0) - (a.extraction || 0));
+  }
+
+  renderRegistryTable(filtered);
+}
+
+function resetRegistryFilters() {
+  if (document.getElementById('regFilterDistrict')) document.getElementById('regFilterDistrict').value = 'all';
+  if (document.getElementById('regFilterCrop')) document.getElementById('regFilterCrop').value = 'all';
+  if (document.getElementById('regFilterRisk')) document.getElementById('regFilterRisk').value = 'all';
+  if (document.getElementById('regSearchInput')) document.getElementById('regSearchInput').value = '';
+  renderRegistryTable(JalRakshakAPI.plots);
+}
+
+async function deleteFarmPlot(plotId) {
+  if (confirm(`Are you sure you want to delete farm plot ${plotId}?`)) {
+    await JalRakshakAPI.deletePlot(plotId);
+    showToast(`Plot ${plotId} deleted successfully`, 'info');
+  }
+}
+
+function exportRegistryCSV() {
+  if (!JalRakshakAPI.plots || JalRakshakAPI.plots.length === 0) {
+    showToast('No plots to export', 'info');
+    return;
+  }
+  const headers = ['Plot_ID', 'Farmer_Name', 'District', 'State', 'Acres', 'Crop', 'Stage', 'Discharge_m3h', 'Risk_Level'];
+  const rows = JalRakshakAPI.plots.map(p => [
+    p.id, `"${p.owner}"`, p.district, p.state, p.acres, p.crop, p.stage, p.discharge || 18, p.riskLevel || 'Normal'
+  ]);
+  const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `JalRakshak_Farm_Registry_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  showToast('Farm Registry CSV exported successfully!', 'success');
+}
+
+// =============================================================================
+// SETTINGS PERSISTENCE
+// =============================================================================
+async function savePlatformSettings() {
+  const normal = parseInt(document.getElementById('setting-normal').value) || 80;
+  const watch = parseInt(document.getElementById('setting-watch').value) || 100;
+  const high = parseInt(document.getElementById('setting-high').value) || 120;
+  const critical = parseInt(document.getElementById('setting-critical').value) || 150;
+  const email = document.getElementById('setting-email').checked;
+  const sms = document.getElementById('setting-sms').checked;
+  const weekly = document.getElementById('setting-weekly').checked;
+  const lang = document.getElementById('setting-lang').value;
+
+  const payload = {
+    threshold_normal: normal,
+    threshold_watch: watch,
+    threshold_high: high,
+    threshold_critical: critical,
+    alert_email: email,
+    alert_sms: sms,
+    alert_weekly_reports: weekly,
+    language: lang
+  };
+
+  const success = await JalRakshakAPI.saveSettings(payload);
+  if (success) {
+    showToast('Platform settings saved and persisted to database!', 'success');
+  } else {
+    showToast('Failed to save settings to database', 'error');
+  }
 }
 
 window.addEventListener('DOMContentLoaded', init);

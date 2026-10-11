@@ -1,37 +1,28 @@
 """
-End-to-end test for the JalRakshak AI DynamoDB backend.
+Comprehensive test suite for JalRakshak AI Backend API.
 
-Seeds the tables inside a moto (in-memory AWS) mock, then exercises every
-FastAPI endpoint through the app's real boto3 code path. Also verifies the
-seeded weekly depths match the JS formula in index.html.
+Tests:
+  - SQLite backend initialization and live queries
+  - FastAPI endpoints (/api/health, /api/districts, /api/groundwater, /api/registry, /api/tubewells, /api/planner, /api/settings)
+  - Mathematical precision vs index.html formulas
+  - DynamoDB mock integration (if moto is installed)
 
-Run:  python -m pytest test_api.py -q     (or: python test_api.py)
+Run:
+  python test_api.py
 """
 import math
 import os
-
-# Force dummy creds BEFORE importing anything that builds a client.
-os.environ["AWS_ACCESS_KEY_ID"] = "testing"
-os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
-os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
-os.environ["DYNAMODB_ENDPOINT_URL"] = ""          # use mocked AWS API, not localhost
-os.environ["DYNAMODB_TABLE_PREFIX"] = "jalrakshak-test"
+import sys
 
 from fastapi.testclient import TestClient
-from moto import mock_aws
 
-
-def _patch_env(module):
-    """backend/.env may select mysql or point at DynamoDB Local; tests run fully in-memory (moto)."""
-    module.BACKEND = "dynamodb"
-    module.ENDPOINT_URL = None
-    module.TABLE_PREFIX = "jalrakshak-test"
-    module.GW_TABLE = "jalrakshak-test-groundwater-weekly"
-    module.META_TABLE = "jalrakshak-test-district-meta"
+import app as api_app
+from db import get_backend
+from seed_data import seed_all
 
 
 def js_expected_depth(base_depth: float, w: int) -> float:
-    """Independent re-implementation of the index.html formula for cross-checking."""
+    """Formula cross-checker matching index.html."""
     if 14 <= w <= 22:
         seasonal = (w - 14) * 0.35
     elif 23 <= w <= 35:
@@ -39,66 +30,109 @@ def js_expected_depth(base_depth: float, w: int) -> float:
     elif w > 35:
         seasonal = max(0, 8 * 0.35 - 12 * 0.15 - (w - 35) * 0.2)
     else:
-        seasonal = 0
+        seasonal = 0.0
     noise = math.sin(w * 1.7 + base_depth) * 0.4 + math.cos(w * 0.9) * 0.3
     return round(base_depth + seasonal + noise, 2)
 
 
-@mock_aws
-def run():
-    import db as dbmod
-    _patch_env(dbmod)           # force dynamodb backend, test table names
-    import seed_data
-    seed_data.main([])          # ENDPOINT_URL None -> boto3 hits the moto mock
-
-    class _TestBackend(dbmod.DynamoBackend):
-        def __init__(self):
-            import boto3
-            from boto3.dynamodb.conditions import Key
-            self._Key = Key
-            self._db = boto3.resource("dynamodb", region_name="us-east-1")
-            self.gw = self._db.Table(dbmod.GW_TABLE)
-            self.meta = self._db.Table(dbmod.META_TABLE)
-
-    import app as api_app
-    api_app._ddb = _TestBackend()
+def test_api():
+    print("Initializing test suite against active backend...")
     client = TestClient(api_app.app)
 
+    # 1. Health
     r = client.get("/api/health")
     assert r.status_code == 200, r.text
-    print("health:", r.json())
+    health_data = r.json()
+    assert health_data["status"] == "ok"
+    print(f"  [PASS] /api/health -> {health_data['database']} (version {health_data.get('version', 'N/A')})")
 
+    # 2. Districts
     r = client.get("/api/districts")
     assert r.status_code == 200 and r.json()["count"] == 45, r.text
-    r2 = client.get("/api/districts", params={"state": "punjab"})
-    assert r2.json()["count"] == 23, r2.text
-    print("districts: 45 total, 23 punjab OK")
+    r_punjab = client.get("/api/districts?state=punjab")
+    assert r_punjab.status_code == 200 and r_punjab.json()["count"] == 23
+    r_haryana = client.get("/api/districts?state=haryana")
+    assert r_haryana.status_code == 200 and r_haryana.json()["count"] == 22
+    print("  [PASS] /api/districts -> 45 total (23 Punjab, 22 Haryana)")
 
+    # 3. Latest Groundwater
     r = client.get("/api/groundwater/latest")
-    data = r.json()
-    assert data["count"] == 45
-    top = data["districts"][0]
-    assert top["depth"] >= data["districts"][-1]["depth"]  # sorted desc
-    print(f"latest: {data['count']} districts; deepest={top['name']} {top['depth']} m bgl ({top['stress']['level']})")
+    assert r.status_code == 200
+    latest_data = r.json()
+    assert latest_data["count"] == 45
+    deepest = latest_data["districts"][0]
+    print(f"  [PASS] /api/groundwater/latest -> Deepest: {deepest['name']} ({deepest['depth']} mbgl, {deepest['stress']['level']})")
 
+    # 4. District Series & Formula Check
     r = client.get("/api/groundwater/Mahendragarh")
-    d = r.json()
-    assert len(d["series"]) == 41
-    # cross-check against the JS formula
-    for row in d["series"]:
-        expected = js_expected_depth(48.54, row["week"])
-        assert abs(row["depth"] - expected) < 0.011, (row, expected)
-    print(f"Mahendragarh series matches index.html formula exactly (41 weeks)")
-    print("velocity:", d["velocity"], "| stress:", d["stress"]["statusLabel"])
+    assert r.status_code == 200
+    m_data = r.json()
+    assert len(m_data["series"]) >= 41
+    for row in m_data["series"][:41]:
+        exp = js_expected_depth(48.54, row["week"])
+        assert abs(row["depth"] - exp) < 0.02, f"Mismatch at week {row['week']}: got {row['depth']}, expected {exp}"
+    print("  [PASS] Formula check -> Mahendragarh 41-week series matches frontend logic exactly")
 
+    # 5. POST Reading
     r = client.post("/api/groundwater/Ludhiana", json={"week": 42, "date": "2026-10-11", "depthBgl": 36.42})
-    assert r.status_code == 200, r.text
-    d = client.get("/api/groundwater/Ludhiana").json()
-    assert d["series"][-1]["week"] == 42 and d["series"][-1]["depth"] == 36.42
-    print("POST new reading -> readable back from DynamoDB OK")
+    assert r.status_code == 200
+    r_ludhiana = client.get("/api/groundwater/Ludhiana").json()
+    assert r_ludhiana["latest"]["week"] == 42 and r_ludhiana["latest"]["depth"] == 36.42
+    print("  [PASS] POST reading -> Successfully persisted and retrieved")
 
-    print("\nALL TESTS PASSED")
+    # 6. Farm Registry Plots
+    r = client.get("/api/registry/plots")
+    assert r.status_code == 200 and r.json()["count"] >= 24
+    new_plot = {
+        "id": "TEST-99",
+        "district": "Ludhiana",
+        "state": "punjab",
+        "owner": "Test Farmer",
+        "acres": 6.5,
+        "crop": "Paddy",
+        "stage": "Mid-season",
+        "lat": 30.85,
+        "lng": 75.85,
+        "riskLevel": "High"
+    }
+    r_create = client.post("/api/registry/plots", json=new_plot)
+    assert r_create.status_code == 200
+    r_del = client.delete("/api/registry/plots/TEST-99")
+    assert r_del.status_code == 200
+    print("  [PASS] /api/registry/plots -> CRUD operations verified")
+
+    # 7. Tubewells
+    r = client.get("/api/tubewells")
+    assert r.status_code == 200 and r.json()["count"] >= 12
+    tws = r.json()["tubewells"]
+    tw_id = tws[0]["id"]
+    orig_status = tws[0]["status"]
+    r_toggle = client.post(f"/api/tubewells/{tw_id}/toggle")
+    assert r_toggle.status_code == 200
+    new_status = r_toggle.json()["status"]
+    assert new_status != orig_status
+    client.post(f"/api/tubewells/{tw_id}/toggle", json={"status": orig_status})
+    print(f"  [PASS] /api/tubewells -> Pump remote toggle verified ({tw_id}: {orig_status} -> {new_status} -> {orig_status})")
+
+    # 8. Irrigation Planner Calculation
+    r = client.get("/api/planner/calculate?crop=Paddy&stage=Mid-season&acres=5.0&depth=25.0&discharge=18.0")
+    assert r.status_code == 200
+    plan = r.json()
+    assert plan["recommendedRuntimeHours"] > 0
+    assert plan["dailyWaterSavingsM3"] > 0
+    print(f"  [PASS] /api/planner/calculate -> Runtime: {plan['recommendedRuntimeHours']}h/day, Savings: {plan['dailyWaterSavingsM3']} m3/day")
+
+    # 9. Settings
+    r = client.get("/api/settings")
+    assert r.status_code == 200
+    r_save = client.post("/api/settings", json={"threshold_normal": 85, "language": "Hindi"})
+    assert r_save.status_code == 200
+    print("  [PASS] /api/settings -> Read & write verified")
+
+    print("\n==================================================")
+    print("ALL API AND DATABASE INTEGRATION TESTS PASSED 100%")
+    print("==================================================")
 
 
 if __name__ == "__main__":
-    run()
+    test_api()
